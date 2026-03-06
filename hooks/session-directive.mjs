@@ -76,13 +76,14 @@ export function writeSessionEventsFile(events, eventsPath) {
         creates.push(ev.data);
       }
     }
+    const DONE = new Set(["completed", "deleted"]);
     const sortedIds = Object.keys(updates).sort((a, b) => Number(a) - Number(b));
     const pending = [];
     const completed = [];
     for (let i = 0; i < creates.length; i++) {
       const matchedId = sortedIds[i];
       const status = matchedId ? (updates[matchedId] || "pending") : "pending";
-      if (status === "completed") {
+      if (DONE.has(status)) {
         completed.push(creates[i]);
       } else {
         pending.push(creates[i]);
@@ -234,12 +235,13 @@ export function buildSessionDirective(source, eventMeta) {
     }
 
     if (creates.length > 0) {
+      const DONE = new Set(["completed", "deleted"]);
       const sortedIds = Object.keys(updates).sort((a, b) => Number(a) - Number(b));
       const pending = [];
       for (let i = 0; i < creates.length; i++) {
         const matchedId = sortedIds[i];
         const status = matchedId ? (updates[matchedId] || "pending") : "pending";
-        if (status !== "completed") {
+        if (!DONE.has(status)) {
           pending.push(creates[i]);
         }
       }

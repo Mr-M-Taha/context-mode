@@ -287,9 +287,10 @@ describe("Task Events", () => {
     };
 
     const events = extractEvents(input);
-    const taskEvents = events.filter(e => e.type === "task");
+    const taskEvents = events.filter(e => e.type === "task_create");
     assert.equal(taskEvents.length, 1);
     assert.equal(taskEvents[0].priority, 1);
+    assert.equal(taskEvents[0].category, "task");
   });
 
   test("extracts task event from TaskUpdate", () => {
@@ -300,8 +301,9 @@ describe("Task Events", () => {
     };
 
     const events = extractEvents(input);
-    const taskEvents = events.filter(e => e.type === "task");
+    const taskEvents = events.filter(e => e.type === "task_update");
     assert.equal(taskEvents.length, 1);
+    assert.equal(taskEvents[0].category, "task");
   });
 });
 

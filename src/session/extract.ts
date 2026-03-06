@@ -244,8 +244,13 @@ function extractTask(input: HookInput): SessionEvent[] {
   const TASK_TOOLS = new Set(["TodoWrite", "TaskCreate", "TaskUpdate"]);
   if (!TASK_TOOLS.has(input.tool_name)) return [];
 
+  // Store tool name as type so create vs update can be reliably distinguished
+  const type = input.tool_name === "TaskUpdate" ? "task_update"
+    : input.tool_name === "TaskCreate" ? "task_create"
+    : "task"; // TodoWrite fallback
+
   return [{
-    type: "task",
+    type,
     category: "task",
     data: truncate(JSON.stringify(input.tool_input), 300),
     priority: 1,
