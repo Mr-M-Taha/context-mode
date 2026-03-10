@@ -103,7 +103,13 @@ npm install -g context-mode
 }
 ```
 
-**Step 4 — Restart Gemini CLI.** On first run, a `GEMINI.md` routing instructions file is auto-created in your project root. This works alongside hooks as a parallel enforcement layer — hooks block dangerous commands programmatically, while `GEMINI.md` teaches the model to prefer sandbox tools from the start.
+**Step 4 — Restart Gemini CLI.** On first session start, the sessionstart hook automatically manages `GEMINI.md` routing instructions in your project root:
+
+- **File does not exist** — the routing instructions file is written.
+- **File exists without context-mode rules** — routing instructions are appended after your existing content.
+- **File already contains context-mode rules** — skipped (idempotent, no duplicate content).
+
+This works alongside hooks as a parallel enforcement layer — hooks block dangerous commands programmatically, while `GEMINI.md` teaches the model to prefer sandbox tools from the start.
 
 > **Why hooks matter:** Without hooks, context-mode relies on `GEMINI.md` instructions alone (~60% compliance). The model sometimes follows them, but regularly runs raw `curl`, reads large files directly, or dumps unprocessed output into context — a single unrouted Playwright snapshot (56 KB) wipes out an entire session's savings. With hooks, every tool call is intercepted before execution — dangerous commands are blocked, and routing guidance is injected in real-time. This is the difference between ~60% and ~98% context savings.
 
@@ -190,7 +196,13 @@ npm install -g context-mode
 
 The `mcp` entry gives you the 6 sandbox tools. The `plugin` entry enables hooks — OpenCode calls the plugin's TypeScript functions directly before and after each tool execution, blocking dangerous commands (like raw `curl`) and enforcing sandbox routing.
 
-**Step 3 — Restart OpenCode.** On first run, an `AGENTS.md` routing instructions file is auto-created in your project root. This works alongside the plugin as a parallel enforcement layer — the plugin intercepts tool calls at runtime, while `AGENTS.md` guides the model's tool preferences from session start.
+**Step 3 — Restart OpenCode.** On first plugin init, the plugin automatically manages `AGENTS.md` routing instructions in your project root:
+
+- **File does not exist** — the routing instructions file is written.
+- **File exists without context-mode rules** — routing instructions are appended after your existing content.
+- **File already contains context-mode rules** — skipped (idempotent, no duplicate content).
+
+This works alongside the plugin as a parallel enforcement layer — the plugin intercepts tool calls at runtime, while `AGENTS.md` guides the model's tool preferences from session start.
 
 > **Why the plugin matters:** Without the `plugin` entry, context-mode has no way to intercept tool calls. The model can run raw `curl`, read large files directly, or dump unprocessed output into context — ignoring `AGENTS.md` instructions. With the plugin, `tool.execute.before` fires on every tool call and blocks or redirects data-heavy commands before they execute. The `experimental.session.compacting` hook builds and injects resume snapshots when the conversation compacts, preserving session state.
 >
