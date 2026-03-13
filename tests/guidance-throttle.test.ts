@@ -77,4 +77,35 @@ describe("guidance throttle", () => {
     const r3 = routePreToolUse("Read", { file_path: "/tmp/c.ts" }, PROJECT_DIR);
     expect(r3?.action).toBe("context");
   });
+
+  it("file-based markers persist across in-memory resets (cross-process sim)", () => {
+    // First call creates both in-memory + file marker
+    const r1 = routePreToolUse("Read", { file_path: "/tmp/a.ts" }, PROJECT_DIR);
+    expect(r1?.action).toBe("context");
+
+    // Clear only in-memory state (simulates new process with same ppid)
+    resetGuidanceThrottle();
+
+    // Manually re-create the marker to simulate file persisting from another process
+    const fs = require("node:fs");
+    const os = require("node:os");
+    const path = require("node:path");
+    const dir = path.resolve(os.tmpdir(), `context-mode-guidance-${process.ppid}`);
+    try { fs.mkdirSync(dir, { recursive: true }); } catch {}
+    try { fs.writeFileSync(path.resolve(dir, "read"), "", "utf-8"); } catch {}
+
+    // Should detect file marker even though in-memory was cleared
+    const r2 = routePreToolUse("Read", { file_path: "/tmp/b.ts" }, PROJECT_DIR);
+    expect(r2).toBeNull();
+  });
+
+  it("Bash passthrough returns null after guidance throttled (not context)", () => {
+    // First Bash fires guidance
+    const r1 = routePreToolUse("Bash", { command: "ls" }, PROJECT_DIR);
+    expect(r1?.action).toBe("context");
+
+    // Second Bash should be null passthrough, not another context
+    const r2 = routePreToolUse("Bash", { command: "pwd" }, PROJECT_DIR);
+    expect(r2).toBeNull();
+  });
 });
