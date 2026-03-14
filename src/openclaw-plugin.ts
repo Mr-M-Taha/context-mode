@@ -41,7 +41,7 @@ import type { HookInput } from "./session/extract.js";
 import { buildResumeSnapshot } from "./session/snapshot.js";
 import type { SessionEvent } from "./types.js";
 import { OpenClawAdapter } from "./adapters/openclaw/index.js";
-import { WorkspaceRouter } from "./openclaw/workspace-router.js";
+import { WorkspaceRouter, extractWorkspace } from "./openclaw/workspace-router.js";
 
 // ── OpenClaw Plugin API Types ─────────────────────────────
 
@@ -180,8 +180,6 @@ function getDBPath(projectDir: string): string {
 // ── Plugin Definition (object export) ─────────────────────
 
 // Guard against double-registration (OpenClaw may call register() more than once per process)
-let _registered = false;
-
 /**
  * OpenClaw plugin definition. The object form provides declarative metadata
  * (id, name, configSchema) that OpenClaw can read without executing code.
@@ -195,9 +193,6 @@ export default {
   // OpenClaw calls register() synchronously — returning a Promise causes hooks
   // to be silently ignored. Async init runs eagerly; hooks await it on first use.
   register(api: OpenClawPluginApi): void {
-    if (_registered) return;
-    _registered = true;
-
     // Resolve build dir from compiled JS location
     const buildDir = dirname(fileURLToPath(import.meta.url));
     const projectDir = process.env.OPENCLAW_PROJECT_DIR || process.cwd();
