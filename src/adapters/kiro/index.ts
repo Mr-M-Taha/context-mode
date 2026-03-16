@@ -1,20 +1,21 @@
 /**
  * adapters/kiro — Kiro IDE/CLI platform adapter.
  *
- * Implements HookAdapter for Kiro's MCP-only paradigm (Phase 1).
+ * Implements HookAdapter for Kiro's hooks-capable paradigm (json-stdio).
  *
  * Kiro specifics:
- *   - MCP-only for Phase 1 (hooks to be added in Phase 2 for Kiro CLI)
+ *   - Hooks via agent config files (~/.kiro/agents/<name>.json)
  *   - Config: ~/.kiro/settings/mcp_config.json (JSON format)
  *   - MCP: full support via mcpServers in mcp_config.json
- *   - All capabilities are false — MCP is the only integration path
+ *   - Hook exit codes: 0=allow, 2=block
+ *   - Cannot modify tool input (exit codes only)
  *   - Session dir: ~/.kiro/context-mode/sessions/
  *   - Routing file: KIRO.md
  *
  * Sources:
  *   - MCP config: https://kiro.dev/docs/mcp/configuration/
  *   - clientInfo.name: https://github.com/kirodotdev/Kiro/issues/5205 ("Kiro CLI")
- *   - CLI hooks: https://kiro.dev/docs/cli/hooks/ (Phase 2)
+ *   - CLI hooks: https://kiro.dev/docs/cli/custom-agents/configuration-reference#hooks-field
  */
 
 import { createHash } from "node:crypto";
@@ -29,6 +30,12 @@ import {
 import { resolve, join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { homedir } from "node:os";
+
+import {
+  HOOK_TYPES as KIRO_HOOK_TYPES,
+  buildHookCommand as buildKiroHookCommand,
+  isContextModeHook as isKiroContextModeHook,
+} from "./hooks.js";
 
 import type {
   HookAdapter,
@@ -48,52 +55,88 @@ import type {
 } from "../types.js";
 
 // ─────────────────────────────────────────────────────────
+// Kiro CLI hook input type
+// ─────────────────────────────────────────────────────────
+
+interface KiroCLIHookInput {
+  hook_event_name?: string;
+  cwd?: string;
+  tool_name?: string;
+  tool_input?: Record<string, unknown>;
+  tool_response?: unknown;
+}
+
+// ─────────────────────────────────────────────────────────
 // Adapter implementation
 // ─────────────────────────────────────────────────────────
 
 export class KiroAdapter implements HookAdapter {
   readonly name = "Kiro";
-  readonly paradigm: HookParadigm = "mcp-only";
+  readonly paradigm: HookParadigm = "json-stdio";
 
   readonly capabilities: PlatformCapabilities = {
-    preToolUse: false,
-    postToolUse: false,
+    preToolUse: true,
+    postToolUse: true,
     preCompact: false,
     sessionStart: false,
-    canModifyArgs: false,
+    canModifyArgs: false,      // Kiro CLI uses exit codes, can't modify input
     canModifyOutput: false,
     canInjectSessionContext: false,
   };
 
   // ── Input parsing ──────────────────────────────────────
-  // Kiro does not support hooks (yet). These methods exist to satisfy the
-  // interface contract but will throw if called.
 
-  parsePreToolUseInput(_raw: unknown): PreToolUseEvent {
-    throw new Error("Kiro does not support hooks (yet)");
+  parsePreToolUseInput(raw: unknown): PreToolUseEvent {
+    const input = raw as KiroCLIHookInput;
+    return {
+      toolName: input.tool_name ?? "",
+      toolInput: input.tool_input ?? {},
+      sessionId: `pid-${process.ppid}`,
+      projectDir: input.cwd ?? process.cwd(),
+      raw,
+    };
   }
 
-  parsePostToolUseInput(_raw: unknown): PostToolUseEvent {
-    throw new Error("Kiro does not support hooks (yet)");
+  parsePostToolUseInput(raw: unknown): PostToolUseEvent {
+    const input = raw as KiroCLIHookInput;
+    const toolResponse = input.tool_response;
+    return {
+      toolName: input.tool_name ?? "",
+      toolInput: input.tool_input ?? {},
+      toolOutput: typeof toolResponse === "string"
+        ? toolResponse
+        : JSON.stringify(toolResponse ?? ""),
+      sessionId: `pid-${process.ppid}`,
+      projectDir: input.cwd ?? process.cwd(),
+      raw,
+    };
   }
 
   parsePreCompactInput(_raw: unknown): PreCompactEvent {
-    throw new Error("Kiro does not support hooks (yet)");
+    throw new Error("Kiro does not support PreCompact hooks");
   }
 
   parseSessionStartInput(_raw: unknown): SessionStartEvent {
-    throw new Error("Kiro does not support hooks (yet)");
+    throw new Error("Kiro does not support SessionStart hooks (yet)");
   }
 
   // ── Response formatting ────────────────────────────────
-  // Kiro does not support hooks. Return undefined for all responses.
 
-  formatPreToolUseResponse(_response: PreToolUseResponse): unknown {
-    return undefined;
+  formatPreToolUseResponse(response: PreToolUseResponse): unknown {
+    // Kiro CLI uses exit codes — this format is for adapter interface completeness.
+    // The actual hook script handles exit codes directly.
+    switch (response.decision) {
+      case "deny":
+        return { exitCode: 2, stderr: response.reason ?? "Blocked by context-mode" };
+      case "context":
+        return { exitCode: 0, stdout: response.additionalContext ?? "" };
+      default:
+        return undefined; // allow — no output needed
+    }
   }
 
   formatPostToolUseResponse(_response: PostToolUseResponse): unknown {
-    return undefined;
+    return undefined; // PostToolUse is non-blocking
   }
 
   formatPreCompactResponse(_response: PreCompactResponse): unknown {
@@ -132,8 +175,19 @@ export class KiroAdapter implements HookAdapter {
     return join(this.getSessionDir(), `${hash}-events.md`);
   }
 
-  generateHookConfig(_pluginRoot: string): HookRegistration {
-    return {};
+  generateHookConfig(pluginRoot: string): HookRegistration {
+    // Kiro CLI hook config format: { preToolUse: [{ matcher, command }] }
+    // Note: This generates the entries for agent config files
+    return {
+      [KIRO_HOOK_TYPES.PRE_TOOL_USE]: [{
+        matcher: "*",
+        hooks: [{ type: "command", command: buildKiroHookCommand(KIRO_HOOK_TYPES.PRE_TOOL_USE, pluginRoot) }],
+      }],
+      [KIRO_HOOK_TYPES.POST_TOOL_USE]: [{
+        matcher: "*",
+        hooks: [{ type: "command", command: buildKiroHookCommand(KIRO_HOOK_TYPES.POST_TOOL_USE, pluginRoot) }],
+      }],
+    };
   }
 
   readSettings(): Record<string, unknown> | null {
@@ -153,16 +207,54 @@ export class KiroAdapter implements HookAdapter {
 
   // ── Diagnostics (doctor) ─────────────────────────────────
 
-  validateHooks(_pluginRoot: string): DiagnosticResult[] {
-    return [
-      {
-        check: "Hook support",
+  validateHooks(pluginRoot: string): DiagnosticResult[] {
+    const results: DiagnosticResult[] = [];
+    const defaultAgent = resolve(homedir(), ".kiro", "agents", "default.json");
+
+    try {
+      const config = JSON.parse(readFileSync(defaultAgent, "utf-8"));
+      const hooks = config.hooks ?? {};
+
+      // Check required hooks
+      for (const hookType of [KIRO_HOOK_TYPES.PRE_TOOL_USE]) {
+        const entries = hooks[hookType] ?? [];
+        const found = entries.some((e: { command?: string }) =>
+          isKiroContextModeHook(e, hookType),
+        );
+        results.push({
+          check: `Hook: ${hookType}`,
+          status: found ? "pass" : "fail",
+          message: found
+            ? `context-mode ${hookType} hook found`
+            : `context-mode ${hookType} hook not configured`,
+          ...(found ? {} : { fix: `Run: context-mode upgrade` }),
+        });
+      }
+
+      // Check optional hooks
+      for (const hookType of [KIRO_HOOK_TYPES.POST_TOOL_USE]) {
+        const entries = hooks[hookType] ?? [];
+        const found = entries.some((e: { command?: string }) =>
+          isKiroContextModeHook(e, hookType),
+        );
+        results.push({
+          check: `Hook: ${hookType}`,
+          status: found ? "pass" : "warn",
+          message: found
+            ? `context-mode ${hookType} hook found`
+            : `context-mode ${hookType} hook not configured (optional)`,
+        });
+      }
+    } catch {
+      results.push({
+        check: "Hook configuration",
         status: "warn",
-        message:
-          "Kiro does not support hooks (yet). " +
-          "Only MCP integration is available.",
-      },
-    ];
+        message: "Could not read ~/.kiro/agents/default.json",
+        fix: "Run: context-mode upgrade",
+      });
+    }
+
+    return results;
   }
 
   checkPluginRegistration(): DiagnosticResult {
@@ -212,8 +304,52 @@ export class KiroAdapter implements HookAdapter {
 
   // ── Upgrade ────────────────────────────────────────────
 
-  configureAllHooks(_pluginRoot: string): string[] {
-    return [];
+  configureAllHooks(pluginRoot: string): string[] {
+    const changes: string[] = [];
+    const configDir = resolve(homedir(), ".kiro", "agents");
+    const defaultAgent = resolve(configDir, "default.json");
+
+    try {
+      mkdirSync(configDir, { recursive: true });
+
+      let config: Record<string, unknown> = {};
+      try {
+        config = JSON.parse(readFileSync(defaultAgent, "utf-8"));
+      } catch {
+        // No existing config — create new
+      }
+
+      const hooks = (config.hooks ?? {}) as Record<string, unknown[]>;
+
+      // Add preToolUse hook if not present
+      const preToolUseEntries = (hooks[KIRO_HOOK_TYPES.PRE_TOOL_USE] ?? []) as Array<Record<string, unknown>>;
+      if (!preToolUseEntries.some(e => isKiroContextModeHook(e as { command?: string }, KIRO_HOOK_TYPES.PRE_TOOL_USE))) {
+        preToolUseEntries.push({
+          matcher: "*",
+          command: buildKiroHookCommand(KIRO_HOOK_TYPES.PRE_TOOL_USE, pluginRoot),
+        });
+        hooks[KIRO_HOOK_TYPES.PRE_TOOL_USE] = preToolUseEntries;
+        changes.push(`Added ${KIRO_HOOK_TYPES.PRE_TOOL_USE} hook to ${defaultAgent}`);
+      }
+
+      // Add postToolUse hook if not present
+      const postToolUseEntries = (hooks[KIRO_HOOK_TYPES.POST_TOOL_USE] ?? []) as Array<Record<string, unknown>>;
+      if (!postToolUseEntries.some(e => isKiroContextModeHook(e as { command?: string }, KIRO_HOOK_TYPES.POST_TOOL_USE))) {
+        postToolUseEntries.push({
+          matcher: "*",
+          command: buildKiroHookCommand(KIRO_HOOK_TYPES.POST_TOOL_USE, pluginRoot),
+        });
+        hooks[KIRO_HOOK_TYPES.POST_TOOL_USE] = postToolUseEntries;
+        changes.push(`Added ${KIRO_HOOK_TYPES.POST_TOOL_USE} hook to ${defaultAgent}`);
+      }
+
+      config.hooks = hooks;
+      writeFileSync(defaultAgent, JSON.stringify(config, null, 2), "utf-8");
+    } catch (err) {
+      changes.push(`Failed to configure hooks: ${(err as Error).message}`);
+    }
+
+    return changes;
   }
 
   backupSettings(): string | null {

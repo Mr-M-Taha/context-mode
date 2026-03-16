@@ -71,6 +71,13 @@ export const CURSOR_OPTS = {
   sessionIdEnv: "CURSOR_SESSION_ID",
 };
 
+/** Kiro CLI platform options. */
+export const KIRO_OPTS = {
+  configDir: ".kiro",
+  projectDirEnv: undefined,   // Kiro CLI provides cwd in hook stdin, no env var
+  sessionIdEnv: undefined,    // No session ID env var — uses ppid fallback
+};
+
 /**
  * Read all of stdin as a string (event-based, cross-platform safe).
  */

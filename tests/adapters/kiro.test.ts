@@ -17,68 +17,97 @@ describe("KiroAdapter", () => {
       expect(adapter.name).toBe("Kiro");
     });
 
-    it("paradigm is mcp-only", () => {
-      expect(adapter.paradigm).toBe("mcp-only");
+    it("paradigm is json-stdio", () => {
+      expect(adapter.paradigm).toBe("json-stdio");
     });
   });
 
   // ── Capabilities ──────────────────────────────────────
 
   describe("capabilities", () => {
-    it("all capabilities are false", () => {
-      expect(adapter.capabilities.preToolUse).toBe(false);
-      expect(adapter.capabilities.postToolUse).toBe(false);
+    it("supports preToolUse and postToolUse", () => {
+      expect(adapter.capabilities.preToolUse).toBe(true);
+      expect(adapter.capabilities.postToolUse).toBe(true);
+    });
+
+    it("does not support preCompact or sessionStart", () => {
       expect(adapter.capabilities.preCompact).toBe(false);
       expect(adapter.capabilities.sessionStart).toBe(false);
+    });
+
+    it("cannot modify args or output", () => {
       expect(adapter.capabilities.canModifyArgs).toBe(false);
       expect(adapter.capabilities.canModifyOutput).toBe(false);
       expect(adapter.capabilities.canInjectSessionContext).toBe(false);
     });
   });
 
-  // ── Parse methods (all throw) ─────────────────────────
+  // ── Parse methods ─────────────────────────────────────
 
   describe("parse methods", () => {
-    it("parsePreToolUseInput throws", () => {
-      expect(() => adapter.parsePreToolUseInput({})).toThrow(
-        /Kiro does not support hooks \(yet\)/,
-      );
+    it("parsePreToolUseInput extracts tool_name and tool_input", () => {
+      const result = adapter.parsePreToolUseInput({
+        hook_event_name: "preToolUse",
+        cwd: "/test/project",
+        tool_name: "fs_read",
+        tool_input: { path: "/test/file.ts" },
+      });
+      expect(result.toolName).toBe("fs_read");
+      expect(result.toolInput).toEqual({ path: "/test/file.ts" });
+      expect(result.projectDir).toBe("/test/project");
     });
 
-    it("parsePostToolUseInput throws", () => {
-      expect(() => adapter.parsePostToolUseInput({})).toThrow(
-        /Kiro does not support hooks \(yet\)/,
-      );
+    it("parsePostToolUseInput extracts tool_response", () => {
+      const result = adapter.parsePostToolUseInput({
+        hook_event_name: "postToolUse",
+        cwd: "/test/project",
+        tool_name: "execute_bash",
+        tool_input: { command: "ls" },
+        tool_response: { success: true, result: ["file1.ts"] },
+      });
+      expect(result.toolName).toBe("execute_bash");
+      expect(result.toolOutput).toContain("success");
     });
 
     it("parsePreCompactInput throws", () => {
       expect(() => adapter.parsePreCompactInput({})).toThrow(
-        /Kiro does not support hooks \(yet\)/,
+        /Kiro does not support PreCompact/,
       );
     });
 
     it("parseSessionStartInput throws", () => {
       expect(() => adapter.parseSessionStartInput({})).toThrow(
-        /Kiro does not support hooks \(yet\)/,
+        /Kiro does not support SessionStart/,
       );
     });
   });
 
-  // ── Format methods (all return undefined) ─────────────
+  // ── Format methods ─────────────────────────────────────
 
   describe("format methods", () => {
-    it("formatPreToolUseResponse returns undefined", () => {
+    it("formatPreToolUseResponse returns exitCode 2 for deny", () => {
       const result = adapter.formatPreToolUseResponse({
         decision: "deny",
-        reason: "test",
+        reason: "blocked",
       });
+      expect(result).toEqual({ exitCode: 2, stderr: "blocked" });
+    });
+
+    it("formatPreToolUseResponse returns exitCode 0 for context", () => {
+      const result = adapter.formatPreToolUseResponse({
+        decision: "context",
+        additionalContext: "use sandbox",
+      });
+      expect(result).toEqual({ exitCode: 0, stdout: "use sandbox" });
+    });
+
+    it("formatPreToolUseResponse returns undefined for allow", () => {
+      const result = adapter.formatPreToolUseResponse({ decision: "allow" });
       expect(result).toBeUndefined();
     });
 
     it("formatPostToolUseResponse returns undefined", () => {
-      const result = adapter.formatPostToolUseResponse({
-        additionalContext: "test",
-      });
+      const result = adapter.formatPostToolUseResponse({ additionalContext: "test" });
       expect(result).toBeUndefined();
     });
 
@@ -97,17 +126,19 @@ describe("KiroAdapter", () => {
     });
   });
 
-  // ── Hook config (all empty) ───────────────────────────
+  // ── Hook config ───────────────────────────────────────
 
   describe("hook config", () => {
-    it("generateHookConfig returns empty object", () => {
+    it("generateHookConfig returns preToolUse and postToolUse entries", () => {
       const config = adapter.generateHookConfig("/some/plugin/root");
-      expect(config).toEqual({});
+      expect(config).toHaveProperty("preToolUse");
+      expect(config).toHaveProperty("postToolUse");
     });
 
-    it("configureAllHooks returns empty array", () => {
-      const changes = adapter.configureAllHooks("/some/plugin/root");
-      expect(changes).toEqual([]);
+    it("generateHookConfig commands point to kiro hook scripts", () => {
+      const config = adapter.generateHookConfig("/some/plugin/root");
+      const preEntries = config["preToolUse"] as Array<{ hooks: Array<{ command: string }> }>;
+      expect(preEntries[0].hooks[0].command).toContain("kiro/pretooluse.mjs");
     });
 
     it("setHookPermissions returns empty array", () => {

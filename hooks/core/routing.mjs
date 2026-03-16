@@ -121,6 +121,10 @@ const TOOL_ALIASES = {
   "Shell": "Bash",
   // VS Code Copilot
   "run_in_terminal": "Bash",
+  // Kiro CLI (https://kiro.dev/docs/cli/hooks/)
+  "fs_read": "Read",
+  "fs_write": "Write",
+  "execute_bash": "Bash",
 };
 
 /**
@@ -241,7 +245,7 @@ export function routePreToolUse(toolName, toolInput, projectDir) {
   // Match both __execute and __ctx_execute (prefixed tool names)
   // Cursor can also surface the tool as MCP:ctx_execute_file.
   if (
-    (toolName.includes("context-mode") && /__(ctx_)?execute$/.test(toolName)) ||
+    (toolName.includes("context-mode") && /(?:__|\/)(ctx_)?execute$/.test(toolName)) ||
     /^MCP:(ctx_)?execute$/.test(toolName)
   ) {
     if (security && toolInput.language === "shell") {
@@ -263,7 +267,7 @@ export function routePreToolUse(toolName, toolInput, projectDir) {
   // ─── MCP execute_file: check file path + code against deny patterns ───
   // Cursor can also surface the tool as MCP:ctx_execute_file.
   if (
-    (toolName.includes("context-mode") && /__(ctx_)?execute_file$/.test(toolName)) ||
+    (toolName.includes("context-mode") && /(?:__|\/)(ctx_)?execute_file$/.test(toolName)) ||
     /^MCP:(ctx_)?execute_file$/.test(toolName)
   ) {
     if (security) {
@@ -295,7 +299,7 @@ export function routePreToolUse(toolName, toolInput, projectDir) {
   }
 
   // ─── MCP batch_execute: check each command individually ───
-  if (toolName.includes("context-mode") && /__(ctx_)?batch_execute$/.test(toolName)) {
+  if (toolName.includes("context-mode") && /(?:__|\/)(ctx_)?batch_execute$/.test(toolName)) {
     if (security) {
       const commands = toolInput.commands ?? [];
       const policies = security.readBashPolicies(projectDir);
