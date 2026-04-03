@@ -449,7 +449,7 @@ Full documentation: [`docs/adapters/openclaw.md`](docs/adapters/openclaw.md)
 
 **Routing:** MCP tools work. Hook-based routing is ready but waiting for Codex to enable hook dispatch. The `AGENTS.md` file provides routing instructions for model awareness in the meantime.
 
-> **Exec mode limitation:** `codex exec` cancels all MCP tool calls because headless mode rejects `RequestUserInput`. Use interactive mode (`codex`) or `codex --full-auto` instead. This is an upstream Codex limitation, not a context-mode issue.
+> **Exec mode regression (v0.118.0):** `codex exec` cancels all MCP tool calls with "user cancelled MCP tool call". The `tool_call_mcp_elicitation` flag went stable in 0.118.0, adding an approval prompt that exec-mode can't handle. **Pin to Codex ≤0.116.0 for exec-mode MCP.** Confirmed by upstream: [openai/codex#16685](https://github.com/openai/codex/issues/16685). Interactive mode (`codex` / `codex --full-auto`) is not affected.
 
 </details>
 

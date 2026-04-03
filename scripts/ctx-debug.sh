@@ -256,6 +256,17 @@ else
   fi
 fi
 
+# Codex CLI
+CODEX_VER="$(safe_cmd_quiet codex --version 2>/dev/null | head -1)"
+if [ -n "$CODEX_VER" ]; then
+  kv "Codex CLI" "$CODEX_VER"
+  # Warn about exec-mode MCP regression in 0.118.0+
+  CODEX_MINOR="$(echo "$CODEX_VER" | sed -E 's/[^0-9]*([0-9]+\.[0-9]+\.[0-9]+).*/\1/' | cut -d. -f2)"
+  if [ -n "$CODEX_MINOR" ] && [ "$CODEX_MINOR" -ge 118 ] 2>/dev/null; then
+    warn "Codex ≥0.118.0: exec-mode MCP broken (openai/codex#16685). Pin to ≤0.116.0 for exec-mode."
+  fi
+fi
+
 # Python
 PY_VER="$(safe_cmd_quiet python3 --version || safe_cmd_quiet python --version)"
 [ -n "$PY_VER" ] && kv "Python" "$PY_VER"

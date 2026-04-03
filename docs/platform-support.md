@@ -210,11 +210,11 @@ context-mode hook codex sessionstart
 ```
 
 **Known Issues / Caveats:**
-- Hook dispatch is NOT yet active in Codex CLI sessions. `codex_hooks` feature flag is `Stage::UnderDevelopment` — the flag is accepted but hooks don't fire during real sessions (verified v0.118.0 by beta tester). Our hook scripts are ready and will work once Codex enables dispatch. Track: [openai/codex#16685](https://github.com/openai/codex/issues/16685), [openai/codex#15824](https://github.com/openai/codex/issues/15824).
+- Hook dispatch is NOT yet active in Codex CLI sessions. `codex_hooks` feature flag is `Stage::UnderDevelopment` — the flag is accepted but hooks don't fire during real sessions (verified v0.118.0 by beta tester). Our hook scripts are ready and will work once Codex enables dispatch. Track: [openai/codex#15824](https://github.com/openai/codex/issues/15824).
+- **MCP exec-mode regression (v0.118.0):** All MCP tool calls are cancelled in `codex exec` with "user cancelled MCP tool call". Caused by `tool_call_mcp_elicitation` feature flag going stable — adds approval prompt that exec-mode can't handle. **Workaround: pin to Codex ≤0.116.0 for exec-mode MCP.** Confirmed by upstream maintainer @etraut-openai. Track: [openai/codex#16685](https://github.com/openai/codex/issues/16685).
 - `tool_name` is always "Bash" (Codex only has one tool type)
 - updatedInput and updatedMCPToolOutput are in the schema but NOT implemented
 - Default hook timeout: 600 seconds
-- `codex exec` mode cancels ALL MCP tool calls — headless mode rejects `RequestUserInput` required for MCP approval. Use interactive mode or `codex --full-auto`. Source: `codex-rs/exec/src/lib.rs:1367-1378`.
 
 ---
 
